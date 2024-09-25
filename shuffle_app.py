@@ -162,5 +162,6 @@ def reset():
     session['shuffle_counts'] = {level_data["level"]: 0 for level_data in data}
     return jsonify({"success": True})
 
-if __name__ == "__main__":
-    app.run(debug=True)
+#if __name__ == "__main__":
+#    app.run(debug=True)
+app = app
