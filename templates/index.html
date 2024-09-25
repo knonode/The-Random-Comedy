@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Random Comedy</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        .level-select-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .table-container {
+            flex: 1;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: center;
+        }
+        .shuffle-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        #win-element {
+            margin: 0;
+        }
+        
+        @keyframes hover {
+            0% { transform: translateY(-2px); }
+            50% { transform: translateY(2px); }
+            100% { transform: translateY(-2px); }
+        }
+
+        .winning-cell {
+            position: relative;
+            z-index: 1;
+        }
+
+        .winning-cell::after {
+            content: "";
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background-color: #f0f0f0;
+            border: 2px solid #4CAF50;
+            z-index: -1;
+            animation: hover 2s infinite linear;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .winning-cell, .winning-cell::after {
+            transition: all 0.3s ease;
+        }
+        #body-list {
+            display: flex;
+            justify-content: space-between;
+        }
+        .element-column {
+            flex: 1;
+        }
+        .bonus-column {
+            flex: 1;
+            color: #357EC7;
+        }
+        #game-over {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        #element-counter {
+            text-align: center;
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+        .won-element {
+            background-color: #90EE90; /* Light green */
+        }
+        .winning-cell {
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { background-color: #f0f0f0; }
+            50% { background-color: #4CAF50; }
+            100% { background-color: #f0f0f0; }
+        }
+        .button-container {
+        text-align: center;
+        margin-bottom: 20px;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>The Random Comedy</h1>
+    <div class="button-container">
+        <a href="/spreadsheet" class="button">View Spreadsheet</a>
+    </div>
+    <label for="level-select">Select Level:</label>
+    <select id="level-select">
+        {% for level in levels %}
+            <option value="{{ level }}" {% if level == selected_level %}selected{% endif %}>{{ level }}</option>
+        {% endfor %}
+    </select>
+    <div class="container">
+        <div class="table-container">
+            <table id="table1">
+                <thead>
+                    <tr>
+                        <th>Element</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody id="data-table1">
+                    {% for item in data[:data|length//3] %}
+                        <tr>
+                            <td>{{ item.element }}</td>
+                            <td>{{ item.value }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="table-container">
+            <table id="table2">
+                <thead>
+                    <tr>
+                        <th>Element</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody id="data-table2">
+                    {% for item in data[data|length//3:(data|length//3)*2] %}
+                        <tr>
+                            <td>{{ item.element }}</td>
+                            <td>{{ item.value }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="table-container">
+            <table id="table3">
+                <thead>
+                    <tr>
+                        <th>Element</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody id="data-table3">
+                    {% for item in data[(data|length//3)*2:] %}
+                        <tr>
+                            <td>{{ item.element }}</td>
+                            <td>{{ item.value }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="shuffle-container">
+        <button id="shuffle-button">Shuffle</button>
+        <button id="reset-button">Reset Game</button>
+        <div id="shuffle-count"></div>
+        <h2 id="win-element"></h2>
+    </div>
+    <div id="element-counter"></div>
+    <div id="game-over">
+        <h2>You have a body, congrats!</h2>
+        <button id="play-again">Play Again</button>
+    </div>
+
+    <div class="view-toggle">
+        <button id="toggle-view">Toggle Percentage View</button>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            const totalElements = {{ total_elements|tojson }};
+            let collectedElements = {{ session['body']|tojson }};
+            const bonusElements = ["Helium", "Neon", "Argon", "Krypton", "Xenon", "Platinum"];
+            let collectedNonBonusElements = collectedElements.filter(el => !bonusElements.includes(el));
+            let shuffleCounts = {{ shuffle_counts|tojson }};
+            const allLevelData = {{ data|tojson }};
+            let isPercentageView = false;
+
+            console.log("Total elements:", totalElements);
+            console.log("Collected elements:", collectedElements);
+            console.log("Shuffle counts:", shuffleCounts);
+            console.log("All level data:", allLevelData);
+
+            function updateElementCounter() {
+                $("#element-counter").text(`${collectedNonBonusElements.length}/${totalElements}`);
+            }
+
+            function getMaxShuffles(level) {
+                const levelData = allLevelData.find(d => d.level === level);
+                return levelData ? levelData.shuffle_count : 0;
+            }
+
+            function updateShuffleCount(level) {
+                const maxShuffles = getMaxShuffles(level);
+                const shufflesLeft = maxShuffles - (shuffleCounts[level] || 0);
+                $("#shuffle-count").text(`Shuffles left: ${shufflesLeft}/${maxShuffles}`);
+                $("#shuffle-button").prop("disabled", shufflesLeft <= 0);
+            }
+
+            function updateTables(levelData) {
+                if (!levelData || !levelData.data) {
+                    console.error("No data available for this level");
+                    return;
+                }
+
+                const tableBody1 = $("#data-table1");
+                const tableBody2 = $("#data-table2");
+                const tableBody3 = $("#data-table3");
+                tableBody1.empty();
+                tableBody2.empty();
+                tableBody3.empty();
+                const third = Math.ceil(levelData.data.length / 3);
+                
+                function appendToTable(tableBody, items) {
+                    items.forEach(item => {
+                        const value = isPercentageView ? (parseFloat(item.value) * 100).toFixed(4) + '%' : item.value;
+                        const row = $(`<tr><td>${item.element}</td><td>${value}</td></tr>`);
+                        if (collectedElements.includes(item.element)) {
+                            row.find('td:first-child').addClass('won-element');
+                        }
+                        tableBody.append(row);
+                    });
+                }
+
+                appendToTable(tableBody1, levelData.data.slice(0, third));
+                appendToTable(tableBody2, levelData.data.slice(third, third*2));
+                appendToTable(tableBody3, levelData.data.slice(third*2));
+            }
+
+            function highlightWinningElement(element) {
+                $('td').removeClass('winning-cell');
+                $(`td:contains('${element}')`).first().addClass('winning-cell');
+            }
+
+            $("#level-select").change(function() {
+                const selectedLevel = $(this).val();
+                console.log("Selected level:", selectedLevel);
+                const levelData = allLevelData.find(d => d.level === selectedLevel);
+                if (levelData) {
+                    updateTables(levelData);
+                    updateShuffleCount(selectedLevel);
+                } else {
+                    console.error("Level data not found for:", selectedLevel);
+                }
+            });
+
+            $("#toggle-view").click(function() {
+                isPercentageView = !isPercentageView;
+                const currentLevel = $("#level-select").val();
+                const currentLevelData = allLevelData.find(d => d.level === currentLevel);
+                if (currentLevelData) {
+                    updateTables(currentLevelData);
+                } else {
+                    console.error("Current level data not found");
+                }
+            });
+
+            $("#shuffle-button").click(function() {
+                const selectedLevel = $("#level-select").val();
+                $.post("/shuffle", { level: selectedLevel }, function(response) {
+                    if (response.error) {
+                        alert(response.error);
+                        return;
+                    }
+                    let winMessage = `You won: ${response.win}`;
+                    if (response.is_bonus) {
+                        winMessage += " (Bonus Element!)";
+                    }
+                    $("#win-element").text(winMessage);
+                    
+                    // Update collected elements
+                    collectedElements = response.body;
+                    collectedNonBonusElements = collectedElements.filter(el => !bonusElements.includes(el));
+                    updateElementCounter();
+
+                    const updatedLevelData = allLevelData.find(d => d.level === selectedLevel);
+                    if (updatedLevelData) {
+                        updateTables(updatedLevelData);
+                        highlightWinningElement(response.win);
+                    } else {
+                        console.error("Updated level data not found");
+                    }
+                    shuffleCounts[selectedLevel] = response.max_shuffles - response.shuffles_left;
+                    updateShuffleCount(selectedLevel);
+                    if (response.body_complete) {
+                        $("#game-over").show();
+                        $("#shuffle-button").prop("disabled", true);
+                    }
+                });
+            });
+
+            $("#reset-button").click(function() {
+                if (confirm("Are you sure you want to reset the game? This will clear all your progress.")) {
+                    $.post("/reset", function(response) {
+                        if (response.success) {
+                            // Reset local variables
+                            collectedElements = [];
+                            collectedNonBonusElements = [];
+                            shuffleCounts = {};
+                            
+                            // Update UI
+                            updateElementCounter();
+                            const currentLevel = $("#level-select").val();
+                            const currentLevelData = allLevelData.find(d => d.level === currentLevel);
+                            if (currentLevelData) {
+                                updateTables(currentLevelData);
+                                updateShuffleCount(currentLevel);
+                            }
+                            
+                            $("#win-element").text("");
+                            $("#game-over").hide();
+                            $("#shuffle-button").prop("disabled", false);
+                            
+                            alert("Game has been reset successfully!");
+                        } else {
+                            alert("Failed to reset the game. Please try again.");
+                        }
+                    });
+                }
+            });
+
+            // Initial update
+            updateElementCounter();
+            const initialLevel = $("#level-select").val();
+            console.log("Initial level:", initialLevel);
+            const initialLevelData = allLevelData.find(d => d.level === initialLevel);
+            if (initialLevelData) {
+                updateTables(initialLevelData);
+                updateShuffleCount(initialLevel);
+            } else {
+                console.error("Initial level data not found");
+            }
+        });
+    </script>
+</body>
+</html>
